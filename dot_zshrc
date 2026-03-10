@@ -112,3 +112,6 @@ export PATH=$PATH:/opt/yourkit/YourKit-JavaProfiler-2025.9/bin
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
+
+# Load local secrets if present
+[ -f "$HOME/.config/secrets/env" ] && source "$HOME/.config/secrets/env"
