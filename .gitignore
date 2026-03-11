@@ -1,2 +1,4 @@
 .DS_Store
 Thumbs.db
+dot_config/btop/*.log
+
