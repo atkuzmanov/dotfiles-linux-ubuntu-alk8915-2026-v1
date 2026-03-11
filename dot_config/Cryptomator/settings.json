@@ -1,0 +1,17 @@
+{
+  "directories" : [ ],
+  "writtenByVersion" : "1.18.0-flatpak-1",
+  "autoCloseVaults" : false,
+  "debugMode" : false,
+  "theme" : "LIGHT",
+  "keychainProvider" : "org.cryptomator.linux.keychain.GnomeKeyringKeychainAccess",
+  "numTrayNotifications" : 3,
+  "showTrayIcon" : true,
+  "compactMode" : false,
+  "startHidden" : false,
+  "uiOrientation" : "LEFT_TO_RIGHT",
+  "useKeychain" : true,
+  "checkForUpdatesEnabled" : false,
+  "useQuickAccess" : true,
+  "quickAccessService" : "org.cryptomator.linux.quickaccess.NautilusBookmarks"
+}
