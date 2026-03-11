@@ -1,4 +1,4 @@
-# Nasko Dev Environment Rebuild System
+# Rebuild System Environment
 
 This repository contains the **dotfiles and automation scripts used to rebuild my Linux development environment from scratch**.
 
