@@ -7,15 +7,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-# -------------------------------
-# CONFIGURABLE VERSIONS
-# -------------------------------
-
 KUBERNETES_VERSION="v1.32"
-
-# -------------------------------
-# Base packages
-# -------------------------------
 
 sudo apt-get update
 
@@ -26,28 +18,34 @@ sudo apt-get install -y \
   openjdk-21-jdk \
   maven
 
-# -------------------------------
-# Docker
-# -------------------------------
+sudo install -m 0755 -d /etc/apt/keyrings
 
+write_gpg_keyring() {
+  local url="$1"
+  local output="$2"
+  local tmp
+  tmp="$(mktemp)"
+  curl -fsSL "$url" | gpg --dearmor --batch --yes > "$tmp"
+  sudo mv "$tmp" "$output"
+  sudo chmod a+r "$output"
+}
+
+# Docker
 if ! command -v docker >/dev/null 2>&1; then
   echo "Installing Docker..."
 
-  sudo install -m 0755 -d /etc/apt/keyrings
-
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+    write_gpg_keyring \
+      "https://download.docker.com/linux/ubuntu/gpg" \
+      "/etc/apt/keyrings/docker.gpg"
+  fi
 
   echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-    https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
     | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
   sudo apt-get update
-
   sudo apt-get install -y \
     docker-ce \
     docker-ce-cli \
@@ -56,45 +54,35 @@ if ! command -v docker >/dev/null 2>&1; then
     docker-compose-plugin
 fi
 
-# -------------------------------
-# Kubernetes (kubectl)
-# -------------------------------
-
+# kubectl
 if ! command -v kubectl >/dev/null 2>&1; then
   echo "Installing kubectl (${KUBERNETES_VERSION})..."
 
-  sudo mkdir -p /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg ]]; then
+    write_gpg_keyring \
+      "https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/Release.key" \
+      "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+  fi
 
-  curl -fsSL "https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/Release.key" \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
-  sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
-  echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
-https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" \
+  echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" \
     | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
 
   sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list
-
   sudo apt-get update
-
   sudo apt-get install -y kubectl
 fi
 
-# -------------------------------
 # Helm
-# -------------------------------
-
 if ! command -v helm >/dev/null 2>&1; then
   echo "Installing Helm..."
 
-  curl https://baltocdn.com/helm/signing.asc \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/helm.gpg
+  if [[ ! -f /etc/apt/keyrings/helm.gpg ]]; then
+    write_gpg_keyring \
+      "https://baltocdn.com/helm/signing.asc" \
+      "/etc/apt/keyrings/helm.gpg"
+  fi
 
-  sudo chmod go+r /etc/apt/keyrings/helm.gpg
-
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] \
-https://baltocdn.com/helm/stable/debian/ all main" \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" \
     | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list > /dev/null
 
   sudo apt-get update
