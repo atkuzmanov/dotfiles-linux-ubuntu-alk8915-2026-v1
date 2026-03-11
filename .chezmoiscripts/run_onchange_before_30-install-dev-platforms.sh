@@ -1,92 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v apt-get >/dev/null 2>&1; then
-  exit 0
-fi
-
-export DEBIAN_FRONTEND=noninteractive
-
-KUBERNETES_VERSION="v1.32"
-
-sudo apt-get update
-
-sudo apt-get install -y \
-  ca-certificates \
-  curl \
-  gnupg \
-  openjdk-21-jdk \
-  maven
-
-sudo install -m 0755 -d /etc/apt/keyrings
-
-write_gpg_keyring() {
-  local url="$1"
-  local output="$2"
-  local tmp
-  tmp="$(mktemp)"
-  curl -fsSL "$url" | gpg --dearmor --batch --yes > "$tmp"
-  sudo mv "$tmp" "$output"
-  sudo chmod a+r "$output"
+log() {
+  echo "[INFO] $*"
 }
 
-# Docker
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Installing Docker..."
+warn() {
+  echo "[WARN] $*" >&2
+}
 
-  if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    write_gpg_keyring \
-      "https://download.docker.com/linux/ubuntu/gpg" \
-      "/etc/apt/keyrings/docker.gpg"
+require_sudo() {
+  sudo -v
+}
+
+apt_repo_contains() {
+  local pattern="$1"
+  grep -Rqs "$pattern" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null
+}
+
+remove_legacy_helm_repo() {
+  local changed=0
+
+  # Remove known old file name
+  if [ -f /etc/apt/sources.list.d/helm-stable-debian.list ]; then
+    if grep -q "baltocdn.com/helm/stable/debian" /etc/apt/sources.list.d/helm-stable-debian.list 2>/dev/null; then
+      log "Removing legacy Helm repo file: /etc/apt/sources.list.d/helm-stable-debian.list"
+      sudo rm -f /etc/apt/sources.list.d/helm-stable-debian.list
+      changed=1
+    fi
   fi
 
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  # Remove any other repo file containing the old Helm repo URL
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    log "Removing legacy Helm repo file: $file"
+    sudo rm -f "$file"
+    changed=1
+  done < <(
+    find /etc/apt -type f \( -name "*.list" -o -name "*.sources" \) -print0 \
+      | xargs -0 grep -l "baltocdn.com/helm/stable/debian" 2>/dev/null || true
+  )
 
-  sudo apt-get update
-  sudo apt-get install -y \
-    docker-ce \
-    docker-ce-cli \
-    containerd.io \
-    docker-buildx-plugin \
-    docker-compose-plugin
-fi
+  return $changed
+}
 
-# kubectl
-if ! command -v kubectl >/dev/null 2>&1; then
-  echo "Installing kubectl (${KUBERNETES_VERSION})..."
+ensure_helm_key() {
+  local keyring="/usr/share/keyrings/helm.gpg"
 
-  if [[ ! -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg ]]; then
-    write_gpg_keyring \
-      "https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/Release.key" \
-      "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+  if [ -f "$keyring" ]; then
+    log "Helm key already present: $keyring"
+    return 1
   fi
 
-  echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" \
-    | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+  log "Installing Helm GPG key..."
+  curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey \
+    | gpg --dearmor \
+    | sudo tee "$keyring" >/dev/null
 
-  sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list
-  sudo apt-get update
-  sudo apt-get install -y kubectl
-fi
+  return 0
+}
 
-# Helm
-if ! command -v helm >/dev/null 2>&1; then
-  echo "Installing Helm..."
+ensure_helm_repo() {
+  local repo_file="/etc/apt/sources.list.d/helm-stable-debian.list"
+  local repo_line='deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main'
 
-  if [[ ! -f /etc/apt/keyrings/helm.gpg ]]; then
-    write_gpg_keyring \
-      "https://baltocdn.com/helm/signing.asc" \
-      "/etc/apt/keyrings/helm.gpg"
+  if [ -f "$repo_file" ] && grep -Fqx "$repo_line" "$repo_file"; then
+    log "Helm APT repo already configured"
+    return 1
   fi
 
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" \
-    | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list > /dev/null
+  log "Configuring Helm APT repo..."
+  echo "$repo_line" | sudo tee "$repo_file" >/dev/null
+  return 0
+}
 
-  sudo apt-get update
+install_helm() {
+  require_sudo
+
+  if command -v helm >/dev/null 2>&1; then
+    log "Helm already installed: $(helm version --short 2>/dev/null || echo "present")"
+    return 0
+  fi
+
+  local apt_changed=0
+
+  if remove_legacy_helm_repo; then
+    apt_changed=1
+  fi
+
+  if ensure_helm_key; then
+    apt_changed=1
+  fi
+
+  if ensure_helm_repo; then
+    apt_changed=1
+  fi
+
+  if [ "$apt_changed" -eq 1 ]; then
+    log "Running apt-get update..."
+    sudo apt-get update
+  else
+    log "APT repo state unchanged"
+  fi
+
+  log "Installing Helm..."
   sudo apt-get install -y helm
-fi
 
-echo "Dev platforms installation completed."
+  log "Helm installed successfully: $(helm version --short)"
+}
+
+install_helm
+
