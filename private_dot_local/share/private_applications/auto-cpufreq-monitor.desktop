@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Auto CPUFreq Monitor
 Comment=Monitor CPU power management
-Exec=gnome-terminal -- /home/ltp15vg2ub1/.local/bin/auto-cpufreq-monitor-launch
+Exec=gnome-terminal -- $HOME/.local/bin/auto-cpufreq-monitor-launch
 # Icon=utilities-system-monitor
 Icon=ac-adapter
 Terminal=false
