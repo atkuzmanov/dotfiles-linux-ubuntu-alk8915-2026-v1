@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Intel GPU Monitor
+Comment=Monitor Intel GPU usage
+Exec=gnome-terminal -- intel_gpu_top
+# Icon=utilities-system-monitor
+Icon=video-display
+# Icon=computer
+Terminal=false
+Type=Application
+Categories=System;Monitor;
+
